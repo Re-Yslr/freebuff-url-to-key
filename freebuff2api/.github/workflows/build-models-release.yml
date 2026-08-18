@@ -1,0 +1,74 @@
+name: 构建 Freebuff 模型快照并更新 MODELS.md
+
+on:
+  schedule:
+    - cron: "0 */6 * * *" # 每 6 小时（UTC 00/06/12/18；北京时间 08/14/20/02）
+  workflow_dispatch:
+
+permissions:
+  contents: write   # 提交 MODELS.md 到 main
+  actions: write    # 清理旧 run 记录（gh run delete）
+
+jobs:
+  build-models:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 运行解析脚本（生成 freebuff-models.json + MODELS.md）
+        run: |
+          node scripts/build-freebuff-models-json.mjs freebuff-models.json
+
+      - name: 上传 JSON 到 Release（Worker 兜底源）
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="models-cache"
+          FILE="freebuff-models.json"
+          # 固定 tag 的 release 只创建一次，之后每次更新 asset
+          gh release view "$TAG" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1 || \
+            gh release create "$TAG" --repo "${GITHUB_REPOSITORY}" \
+              --title "Freebuff Models (auto)" \
+              --notes "每日自动更新的动态模型映射快照（Worker 兜底源）" \
+              --latest
+          gh release delete-asset "$TAG" "$FILE" --repo "${GITHUB_REPOSITORY}" --yes 2>/dev/null || true
+          gh release upload "$TAG" "$FILE" --repo "${GITHUB_REPOSITORY}" --clobber
+          echo "✅ Release asset 已更新 (tag: $TAG)"
+
+      - name: 提交 MODELS.md 更新到 main（保持工作流活跃，防止 60 天无活动被禁用）
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add MODELS.md
+          if git diff --cached --quiet; then
+            echo "MODELS.md 无变化，跳过提交"
+          else
+            DATE=$(TZ=Asia/Shanghai date +%Y-%m-%d\ %H:%M)
+            git commit -m "docs: update MODELS.md (${DATE} 北京时间)" --no-verify
+            git push origin main
+            echo "✅ MODELS.md 已提交并推送"
+          fi
+
+      # 清理旧 run jobs：只保留最新 1 条运行记录，节省 Actions 配额
+      # 写法与 extract-token.yml 保持一致（该写法已实测能正常删除）
+      - name: clear old run jobs
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          runs=$(gh run list --workflow="${{ github.workflow }}" --limit=100 --json databaseId --jq '.[].databaseId')
+          count=0
+          for run_id in $runs; do
+            count=$((count + 1))
+            if [ $count -gt 1 ]; then
+              echo "deleted: $run_id"
+              gh run delete $run_id || true
+            fi
+          done

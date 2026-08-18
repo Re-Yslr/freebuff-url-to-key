@@ -1,0 +1,83 @@
+name: 获取 Freebuff authToken
+
+# 只允许手动触发（Actions 页面 → Run workflow）
+on:
+  workflow_dispatch:
+    inputs:
+      poll_timeout:
+        description: "授权等待秒数（默认 300，可在手机上慢慢操作）"
+        required: false
+        default: "300"
+        type: string
+      fingerprint:
+        description: "指定 fingerprintId（留空自动生成）"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  oauth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      # 强制校验 TG 变量：不配置则不运行
+      - name: 校验 TG 变量（未配置则不运行）
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: |
+          set -u
+          if [ -z "$TG_BOT_TOKEN" ] || [ -z "$TG_CHAT_ID" ]; then
+            echo "❌ 未配置 TG_BOT_TOKEN 或 TG_CHAT_ID，工作流不运行。"
+            echo "   请在仓库 Settings → Secrets and variables → Actions 配置这两个 secret："
+            echo "     - TG_BOT_TOKEN：Telegram Bot 的 token"
+            echo "     - TG_CHAT_ID  ：接收消息的 chat_id"
+            exit 1
+          fi
+          echo "✅ TG 变量已配置，继续。"
+
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      # 先发一条测试消息，确认 TG 链路通；收不到说明是 bot/chat_id 配置问题
+      - name: 测试 TG 连通性（发测试消息）
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: |
+          cd freebuff_tools
+          python3 extract_freebuff.py tgsend
+
+      - name: 运行提取脚本（授权链接与 authToken 推送 TG）
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          OAUTH_POLL_TIMEOUT: ${{ inputs.poll_timeout }}
+          FINGERPRINT: ${{ inputs.fingerprint }}
+        run: |
+          cd freebuff_tools
+          if [ -n "$FINGERPRINT" ]; then
+            python3 -u extract_freebuff.py login --fingerprint "$FINGERPRINT"
+          else
+            python3 -u extract_freebuff.py login
+          fi
+
+      # 清理旧 run jobs：只保留最新 1 条运行记录
+      - name: clear old run jobs
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          runs=$(gh run list --workflow="${{ github.workflow }}" --limit=100 --json databaseId --jq '.[].databaseId')
+          count=0
+          for run_id in $runs; do
+            count=$((count + 1))
+            if [ $count -gt 1 ]; then
+              echo "deleted: $run_id"
+              gh run delete $run_id || true
+            fi
+          done

@@ -1,0 +1,41 @@
+node_modules/
+.dev.vars
+test/worker_tmp.mjs
+
+# 凭证/token 文件，绝不提交
+freebuff_tools/freebuff_credentials.json
+**/freebuff_credentials.json
+freebuff_tools/banned_emails.json
+# Docker 容器凭据目录，绝不提交
+credentials/
+__pycache__/
+test/
+
+# 部署脚本含凭据读取逻辑，仅本地使用，不推送
+/credentials.yaml
+/deploy.sh
+
+# 更新记录本地自用，不推送 GitHub
+CHANGELOG.md
+
+# wrangler 本地缓存/状态，不提交
+.wrangler/
+
+# Vercel 本地缓存/项目文件，不提交
+.vercel/
+
+# ⚠️ wrangler.toml 含敏感变量（FREEBUFF_TOKEN 等），绝不提交 GitHub
+wrangler.toml
+
+# ⚠️ .env 及所有带真实变量值的文件，绝不提交
+.env
+.env.*
+
+# 本地日志分析文件，绝不提交
+logs/
+
+# Hermes 本地计划、实验补丁和会话资料，仅本地保存
+.hermes/
+
+# 本地额度验证脚本，仅本地使用
+freebuff_tools/test_extract_freebuff_quota.py

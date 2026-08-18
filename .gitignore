@@ -1,0 +1,21 @@
+# 凭据/token 文件
+credentials/
+freebuff2api/credentials/
+freebuff2api/freebuff_tools/freebuff_credentials.json
+
+# 环境变量
+.env
+.env.*
+
+# 运行时日志
+*.log
+
+# 系统文件
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
